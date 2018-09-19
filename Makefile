@@ -13,9 +13,9 @@ ifeq ($(UNAME_S),Darwin)
 	DEP= -I/usr/local/opt/jpeg-turbo/include -L/usr/local/opt/jpeg-turbo/lib
 endif
 		
-PLUGINLIBS = libantd.$(EXT) -lvncclient  -lpthread -lz# -lsqlite3 
+PLUGINLIBS = libantd.$(EXT) -lvncclient  -lpthread -lz -ljpeg# -lsqlite3 
 				
-PCFLAGS=-W -Wall -g -D DEBUG  $(PPF_FLAG) $(DEP) -D USE_ZLIB
+PCFLAGS=-W -Wall -g -D DEBUG  $(PPF_FLAG) $(DEP) -D USE_JPEG #-D USE_ZLIB
  
 main:  $(PLUGINSDEP)  $(PLUGINS)  #lib
 

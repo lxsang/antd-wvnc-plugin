@@ -5,6 +5,9 @@
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
+#ifdef USE_JPEG
+#include <jpeglib.h>
+#endif
 #include "plugin.h"
 #define get_user_data(x) ((wvnc_user_data_t *)x)
 #define R_SHIFT(x) (0)
@@ -47,23 +50,80 @@ static rfbCredential *get_credential(rfbClient *cl, int credentialType);
 static void update(rfbClient *cl, int x, int y, int w, int h);
 
 #ifdef USE_ZLIB
-int buff_compress(uint8_t* src, uint8_t* dest, int len)
+int zlib_compress(uint8_t *src, int len)
 {
+    uint8_t *dest = (uint8_t *)malloc(len);
     z_stream defstream;
     defstream.zalloc = Z_NULL;
     defstream.zfree = Z_NULL;
     defstream.opaque = Z_NULL;
     // setup "a" as the input and "b" as the compressed output
-    defstream.avail_in = (uInt)len; // size of input
-    defstream.next_in = (Bytef *)src; // input char array
-    defstream.avail_out = (uInt)len; // size of output
+    defstream.avail_in = (uInt)len;     // size of input
+    defstream.next_in = (Bytef *)src;   // input char array
+    defstream.avail_out = (uInt)len;    // size of output
     defstream.next_out = (Bytef *)dest; // output char array
-    
+
     // the actual compression work.
     deflateInit(&defstream, Z_BEST_COMPRESSION);
     deflate(&defstream, Z_FINISH);
     deflateEnd(&defstream);
+    memcpy(src, dest, defstream.total_out);
+    free(dest);
     return defstream.total_out;
+}
+#endif
+
+#ifdef USE_JPEG
+int jpeg_compress(uint8_t *buff, int w, int h, int bbp)
+{
+    uint8_t *tmp = buff;
+    /*if(bbp == 4)
+    {
+        tmp = (uint8_t*)malloc(w*h*(bbp-1));
+        for(int i = 0; i < w*h; i++)
+        {
+            memcpy(tmp + (i*(bbp-1)), buff+ i*bbp, bbp-1 );
+        }
+    }*/
+    struct jpeg_compress_struct cinfo = {0};
+    struct jpeg_error_mgr jerror = {0};
+    jerror.trace_level = 10;
+    cinfo.err = jpeg_std_error(&jerror);
+    jerror.trace_level = 10;
+    cinfo.err->trace_level = 10;
+    jpeg_create_compress(&cinfo);
+
+    uint8_t *out = NULL; 
+    unsigned long outbuffer_size = 0;
+    jpeg_mem_dest(&cinfo, &out, &outbuffer_size);
+    cinfo.image_width = w;
+    cinfo.image_height = h;
+    cinfo.input_components = bbp;
+    cinfo.in_color_space = bbp==4?JCS_EXT_RGBA:JCS_RGB;
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, 50, true);
+    jpeg_start_compress(&cinfo, true);
+    //unsigned counter = 0;
+    JSAMPROW row_pointer[1];
+    while (cinfo.next_scanline < cinfo.image_height)
+    {
+        row_pointer[0] = (JSAMPROW)(&tmp[cinfo.next_scanline * w * bbp]);
+        unsigned return_code = jpeg_write_scanlines(&cinfo, row_pointer, 1);
+    }
+    jpeg_finish_compress(&cinfo);
+    jpeg_destroy_compress(&cinfo);
+    //LOG("before %d after %d\n",  w*h*bbp, );
+    if(outbuffer_size < w*h*bbp)
+    {
+        memcpy(buff, out, outbuffer_size);
+    }
+    else
+    {
+        outbuffer_size = 0;
+    }
+    //if(bbp == 4) free(tmp);
+    free(out);
+    return outbuffer_size;
 }
 #endif
 int get_pixel_format(uint8_t deep, wvnc_pixel_format_t *d)
@@ -187,7 +247,7 @@ static rfbBool resize(rfbClient *client)
     client->updateRect.x = client->updateRect.y = 0;
     client->updateRect.w = width;
     client->updateRect.h = height;
-    //depth = 32;
+    //depth = 24;
     void *data = rfbClientGetClientData(client, identify());
     wvnc_user_data_t *user_data = get_user_data(data);
     //client->width = sdl->pitch / (depth / 8);
@@ -237,14 +297,8 @@ static void update(rfbClient *client, int x, int y, int w, int h)
     uint8_t bbp = (uint8_t)client->format.bitsPerPixel / 8;
     int size = w * h * bbp;
     uint8_t *cmd = (uint8_t *)malloc(size + 10); // + 9
-#ifdef USE_ZLIB
-    uint8_t* buff = (uint8_t *)malloc(size);
-    if (!buff)
-    {
-        vnc_fatal(user_data, "Cannot allocate data for update");
-        return;
-    }
-#endif
+    uint8_t *tmp = cmd + 10;
+    uint8_t flag = 0;
     if (!cmd)
     {
         vnc_fatal(user_data, "Cannot allocate data for update");
@@ -255,43 +309,49 @@ static void update(rfbClient *client, int x, int y, int w, int h)
         LOG("Client frame buffe data not found\n");
         return;
     }
-#ifdef USE_ZLIB
-    uint8_t *dest_ptr = buff; 
-#else
-    uint8_t *dest_ptr = cmd + 10; 
-#endif
+    uint8_t *dest_ptr = tmp;
     uint8_t *src_ptr;
 
     //cpy line by line
     int cw = client->width;
-    for(int j = y; j < y+ h; j++)
+    for (int j = y; j < y + h; j++)
     {
-        src_ptr = client->frameBuffer + ( j*cw*bbp + x*bbp);
-        memcpy(dest_ptr, src_ptr, w*bbp);
-        if(bbp == 4)
-            for(int i= bbp -1; i < w*bbp; i+=bbp)
+        src_ptr = client->frameBuffer + (j * cw * bbp + x * bbp);
+        memcpy(dest_ptr, src_ptr, w * bbp);
+        if (bbp == 4)
+            for (int i = bbp - 1; i < w * bbp; i += bbp)
                 dest_ptr[i] = 255;
-        dest_ptr += w*bbp;
+        dest_ptr += w * bbp;
     }
     cmd[0] = 0x84; //update command
     cmd[1] = (uint8_t)(x & 0xFF);
     cmd[2] = (uint8_t)(x >> 8);
     cmd[3] = (uint8_t)(y & 0xFF);
     cmd[4] = (uint8_t)(y >> 8);
-    cmd[5] = (uint8_t)(w & 0xFF); 
+    cmd[5] = (uint8_t)(w & 0xFF);
     cmd[6] = (uint8_t)(w >> 8);
     cmd[7] = (uint8_t)(h & 0xFF);
     cmd[8] = (uint8_t)(h >> 8);
-    cmd[9] = 0x0;
-#ifdef USE_ZLIB
-    cmd[9] = 0x1;
-    size = buff_compress(buff, cmd+10, size);
+
+#ifdef USE_JPEG
+    if(bbp == 3 || bbp == 4)
+    {
+        int ret = jpeg_compress(tmp, w, h, bbp);
+        if(ret > 0)
+        {
+            flag |= 0x01;
+            size = ret;
+        } 
+    }
+    
 #endif
+#ifdef USE_ZLIB
+    flag |= 0x02;
+    size = zlib_compress(tmp, size);
+#endif
+    cmd[9] = flag;
     ws_b(user_data->client, cmd, size + 10);
     free(cmd);
-#ifdef USE_ZLIB
-    free(buff);
-#endif
 }
 
 static rfbCredential *get_credential(rfbClient *cl, int credentialType)
@@ -380,7 +440,7 @@ void open_session(void *data, const char *addr)
         }
         process(user_data, 0);
         //LOG("ENd process \n");
-        int status = WaitForMessage(user_data->vncl, 500);//500
+        int status = WaitForMessage(user_data->vncl, 500); //500
         if (status < 0)
         {
             if (user_data->vncl)
@@ -442,7 +502,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
             return NULL;
         return strdup((char *)header.data);
     case 0x03: // client enter a credential
-        data = (uint8_t*)malloc(size);
+        data = (uint8_t *)malloc(size);
         memcpy(data, header.data, size);
         return data;
         break;
@@ -452,7 +512,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         return data;
         break;
     case 0x05: //mouse event
-        SendPointerEvent(user_data->vncl, header.data[0]|(header.data[1]<<8) , header.data[2]|(header.data[3]<<8), header.data[4]);
+        SendPointerEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2] | (header.data[3] << 8), header.data[4]);
         break;
     default:
         return vnc_fatal(user_data, "Unknown client command");
@@ -465,7 +525,7 @@ void handle(void *cl, const char *m, const char *rqp, dictionary rq)
     if (ws_enable(rq))
     {
 #ifdef USE_ZLIB
-            LOG("Zlib is enabled\n");
+        LOG("Zlib is enabled\n");
 #endif
         //set time out for the tcp socket
         // set timeout to socket
