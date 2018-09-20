@@ -78,7 +78,7 @@ int zlib_compress(uint8_t *src, int len)
 #endif
 
 #ifdef USE_JPEG
-int jpeg_compress(uint8_t *buff, int w, int h, int components)
+int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
 {
     uint8_t *tmp = buff;
     /*if(bbp == 4)
@@ -105,7 +105,7 @@ int jpeg_compress(uint8_t *buff, int w, int h, int components)
     cinfo.input_components = components;
     cinfo.in_color_space = components==4?JCS_EXT_RGBA:JCS_RGB;
     jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, 50, true);
+    jpeg_set_quality(&cinfo, quality, true);
     jpeg_start_compress(&cinfo, true);
     //unsigned counter = 0;
     JSAMPROW row_pointer[1];
@@ -338,7 +338,7 @@ static void update(rfbClient *client, int x, int y, int w, int h)
 #ifdef USE_JPEG
     if((components == 3 || components == 4) && (user_data->flag ==1 || user_data->flag == 3))
     {
-        int ret = jpeg_compress(tmp, w, h, components);
+        int ret = jpeg_compress(tmp, w, h, components, user_data->quality);
         if(ret > 0)
         {
             flag |= 0x01;
