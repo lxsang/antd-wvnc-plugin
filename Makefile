@@ -15,7 +15,7 @@ endif
 		
 PLUGINLIBS = libantd.$(EXT) -lvncclient  -lpthread -lz -ljpeg# -lsqlite3 
 				
-PCFLAGS=-W -Wall -g -D DEBUG  $(PPF_FLAG) $(DEP) -D USE_JPEG #-D USE_ZLIB
+PCFLAGS=-W -Wall -g -D DEBUG  $(PPF_FLAG) $(DEP) -D USE_JPEG -D USE_ZLIB
  
 main:  $(PLUGINSDEP)  $(PLUGINS)  #lib
 
