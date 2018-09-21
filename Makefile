@@ -9,6 +9,7 @@ PLUGINSDEP = 	$(OBJS) \
 				wvnc.o
 
 DEP = 
+WEB_BUILD_PATH = /home/mrsang/myws/antd-web-apps/apps/assets/scripts
 ifeq ($(UNAME_S),Darwin)
 	DEP= -I/usr/local/opt/jpeg-turbo/include -L/usr/local/opt/jpeg-turbo/lib
 endif
@@ -25,6 +26,12 @@ main:  $(PLUGINSDEP)  $(PLUGINS)  #lib
 %.$(EXT):
 		-ln -s $(PBUILDIRD)/libantd.$(EXT) .
 		$(CC) $(PCFLAGS) $(PLUGINSDEP) $(PLUGINLIBS) -shared -o $(PBUILDIRD)/$(basename $@).$(EXT) 
+
+web:
+	emcc -o $(WEB_BUILD_PATH)/wvnc_asm.js -I wasm/libjpeg/  -I wasm/zlib wasm/decoder.c \
+	wasm/libjpeg/.libs/libjpeg.a wasm/zlib/libz.a \
+	-O3 -s ALLOW_MEMORY_GROWTH=1  -s WASM=1 -s NO_EXIT_RUNTIME=1 -s \
+	'EXTRA_EXPORTED_RUNTIME_METHODS=["cwrap"]' 
 
 
 clean: #libclean
