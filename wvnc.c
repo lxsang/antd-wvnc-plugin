@@ -31,7 +31,7 @@ typedef struct
     uint8_t bbp;
     uint8_t flag;
     uint8_t quality; 
-    int rate;
+    //int rate;
 } wvnc_user_data_t;
 
 typedef struct
@@ -432,7 +432,7 @@ void open_session(void *data, const char *addr)
     LOG("client.flag: %d\n", user_data->flag );
     LOG("client.JPEG.quality: %d\n", user_data->quality );
     LOG("Server: %s\n", addr);
-    LOG("Rate is %d\n", user_data->rate);
+    //LOG("Rate is %d\n", user_data->rate);
     if (!rfbInitClient(user_data->vncl, &argc, argv))
     {
         user_data->vncl = NULL; /* rfbInitClient has already freed the client struct */
@@ -450,7 +450,7 @@ void open_session(void *data, const char *addr)
         }
         process(user_data, 0);
         //LOG("ENd process \n");
-        int status = WaitForMessage(user_data->vncl, user_data->rate); //500
+        int status = WaitForMessage(user_data->vncl, 500); //500
         if (status < 0)
         {
             if (user_data->vncl)
@@ -508,8 +508,8 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         user_data->bbp = header.data[0];
         user_data->flag = header.data[1];
         user_data->quality = header.data[2];
-        user_data->rate = (header.data[3] | (header.data[4] << 8))*1000;
-        open_session(user_data, (char *)(header.data + 5));
+        //user_data->rate = (header.data[3] | (header.data[4] << 8))*1000;
+        open_session(user_data, (char *)(header.data + 3));
         break;
     case 0x02: //client enter a vnc password
         if (!header.data)
@@ -531,7 +531,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         break;
     case 0x06: // key board event
         //LOG("Key is %c\n", header.data[0]);
-        SendKeyEvent(user_data->vncl, header.data[0], header.data[1]?TRUE:FALSE);
+        SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2]?TRUE:FALSE);
         break;
     default:
         return vnc_fatal(user_data, "Unknown client command");

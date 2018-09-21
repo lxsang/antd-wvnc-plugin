@@ -12,6 +12,7 @@ DEP =
 WEB_BUILD_PATH = /home/mrsang/myws/antd-web-apps/apps/assets/scripts
 ifeq ($(UNAME_S),Darwin)
 	DEP= -I/usr/local/opt/jpeg-turbo/include -L/usr/local/opt/jpeg-turbo/lib
+	WEB_BUILD_PATH= /Users/mrsang/Documents/workspace/antd-web-apps/apps/assets/scripts
 endif
 		
 PLUGINLIBS = libantd.$(EXT) -lvncclient  -lpthread -lz -ljpeg# -lsqlite3 

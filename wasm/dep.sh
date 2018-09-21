@@ -30,5 +30,10 @@ tar xvzf zlib-1.2.11.tar.gz -C ./zlib --strip-components=1
 rm zlib-1.2.11.tar.gz
 cd zlib
 emconfigure ./configure
+os=`uname -s`
+if [ "$os" = "Darwin" ]; then
+    sed -i -e 's/AR=libtool/AR=emar/g' Makefile
+    sed -i -e 's/ARFLAGS=-o/ARFLAGS=rc/g' Makefile
+fi
 # TODO modify make file using sed if macos
 emmake make

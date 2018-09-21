@@ -11,7 +11,6 @@
 * to web assembly to be used on the browser
 */
 
-/*alloc a new frame buffer*/
 typedef struct{
     uint8_t r;
     uint8_t g;
