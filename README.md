@@ -45,5 +45,3 @@ Web applications can be put on **/path/to/your/build/htdocs**, the web socket to
 ws://your_host:your_port/wvnc
 ```
 This websocket address can be used with my client side javascript library [**wvnc.js**](https://github.com/lxsang/wvnc.js) to develop web based VNC client 
-
-``
