@@ -499,7 +499,6 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
     uint8_t cmd = header.cmd;
     uint16_t size = header.size;
     wvnc_user_data_t *user_data = get_user_data(ptr);
-    //LOG("Data size is %d\n", size);
     uint8_t *data;
     // in case of string
     switch (cmd)
@@ -533,10 +532,34 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         //LOG("Key is %c\n", header.data[0]);
         SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2]?TRUE:FALSE);
         break;
+    case 0x07:
+        SendClientCutText(user_data->vncl, header.data, strlen(header.data));
+        break;
     default:
         return vnc_fatal(user_data, "Unknown client command");
     }
     return NULL;
+}
+
+static void got_clipboard(rfbClient *cl, const char *text, int len)
+{
+    LOG("received clipboard text '%s'\n", text);
+    void *data = rfbClientGetClientData(cl, identify());
+    wvnc_user_data_t *user_data = get_user_data(data);
+    uint8_t* cmd = (uint8_t*) malloc(len+1);
+    cmd[0] = 0x85;
+    memcpy(cmd+1, text, len);
+    ws_b(user_data->client,cmd,len+1);
+    free(cmd);
+    uint8_t *ack = (uint8_t *)process(user_data, 1);
+    if (!ack || !(*ack))
+    {
+        LOG("Fail to set client clipboard\n");
+        if (ack)
+            free(ack);
+        return;
+    }
+    free(ack);
 }
 
 void handle(void *cl, const char *m, const char *rqp, dictionary rq)
@@ -567,7 +590,7 @@ void handle(void *cl, const char *m, const char *rqp, dictionary rq)
         vncl->GetPassword = get_password;
         //cl->HandleKeyboardLedState=kbd_leds;
         //cl->HandleTextChat=text_chat;
-        //cl->GotXCutText = got_selection;
+        vncl->GotXCutText = got_clipboard;
         vncl->GetCredential = get_credential;
         vncl->listenPort = LISTEN_PORT_OFFSET;
         vncl->listen6Port = LISTEN_PORT_OFFSET;

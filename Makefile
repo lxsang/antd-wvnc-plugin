@@ -28,12 +28,6 @@ main:  $(PLUGINSDEP)  $(PLUGINS)  #lib
 		-ln -s $(PBUILDIRD)/libantd.$(EXT) .
 		$(CC) $(PCFLAGS) $(PLUGINSDEP) $(PLUGINLIBS) -shared -o $(PBUILDIRD)/$(basename $@).$(EXT) 
 
-web:
-	emcc -o $(WEB_BUILD_PATH)/wvnc_asm.js -I wasm/libjpeg/  -I wasm/zlib wasm/decoder.c \
-	wasm/libjpeg/.libs/libjpeg.a wasm/zlib/libz.a \
-	-O3 -s ALLOW_MEMORY_GROWTH=1  -s WASM=1 -s NO_EXIT_RUNTIME=1 -s \
-	'EXTRA_EXPORTED_RUNTIME_METHODS=["cwrap"]' 
-
 
 clean: #libclean
 		-rm -f *.o  *.$(EXT) $(PBUILDIRD)/$(PLUGINS) 

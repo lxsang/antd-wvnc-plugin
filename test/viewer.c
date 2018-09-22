@@ -2,7 +2,7 @@
  * @example SDLvncviewer.c
  */
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include <signal.h>
 #include <rfb/rfbclient.h>
 
