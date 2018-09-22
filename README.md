@@ -25,7 +25,7 @@ As **WVNC** is an **Antd's** plugin, it need to be built along with the server. 
 * libvncserver-dev
 
 ### build
-When all dependencies are isntalled, the build can be done with a few single command lines:
+When all dependencies are installed, the build can be done with a few single command lines:
 
 ```bash
 mkdir antd
