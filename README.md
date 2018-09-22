@@ -8,7 +8,7 @@ To speed up the data transmission, **WVNC** uses **libjpeg** and **zlib** for da
 A demo will soon be available
 
 ## Build from source
-ANTD: As **WVNC** is an **Antd** plugin, it need to be built along with the server. This require the following application/libraries to be pre installed:
+As **WVNC** is an **Antd's** plugin, it need to be built along with the server. This require the following application/libraries to be pre installed:
 
 ### build dep
 * git
