@@ -645,5 +645,10 @@ void handle(void *cl, const char *m, const char *rqp, dictionary rq)
         process(user_data, 1);
         //}
     }
+    else
+    {
+        html(cl);
+        __t(cl, "Welcome to WVNC, plese use a websocket connection");
+    }
     LOG("%s\n", "EXIT Streaming..");
 }
