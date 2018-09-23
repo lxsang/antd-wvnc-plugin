@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <rfb/rfbclient.h>
 #include <pthread.h>
 #ifdef USE_ZLIB
@@ -30,7 +31,7 @@ typedef struct
     void *vncl;
     uint8_t bbp;
     uint8_t flag;
-    uint8_t quality; 
+    uint8_t quality;
     //int rate;
 } wvnc_user_data_t;
 
@@ -97,13 +98,13 @@ int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
     cinfo.err->trace_level = 10;
     jpeg_create_compress(&cinfo);
 
-    uint8_t *out = NULL; 
+    uint8_t *out = NULL;
     unsigned long outbuffer_size = 0;
     jpeg_mem_dest(&cinfo, &out, &outbuffer_size);
     cinfo.image_width = w;
     cinfo.image_height = h;
     cinfo.input_components = components;
-    cinfo.in_color_space = components==4?JCS_EXT_RGBA:JCS_RGB;
+    cinfo.in_color_space = components == 4 ? JCS_EXT_RGBA : JCS_RGB;
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, quality, true);
     jpeg_start_compress(&cinfo, true);
@@ -117,7 +118,7 @@ int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
     jpeg_finish_compress(&cinfo);
     jpeg_destroy_compress(&cinfo);
     //LOG("before %d after %d\n",  w*h*bbp, );
-    if(outbuffer_size < w*h*components)
+    if (outbuffer_size < w * h * components)
     {
         memcpy(buff, out, outbuffer_size);
     }
@@ -257,7 +258,7 @@ static rfbBool resize(rfbClient *client)
         free(client->frameBuffer);
     client->frameBuffer = (uint8_t *)malloc(width * height * user_data->bbp / 8);
     wvnc_pixel_format_t pxf;
-    if (!get_pixel_format( user_data->bbp, &pxf))
+    if (!get_pixel_format(user_data->bbp, &pxf))
     {
         vnc_fatal(user_data, "Cannot get pixel format");
         return FALSE;
@@ -279,7 +280,7 @@ static rfbBool resize(rfbClient *client)
     cmd[2] = (uint8_t)(width >> 8);
     cmd[3] = (uint8_t)(height & 0xFF);
     cmd[4] = (uint8_t)(height >> 8);
-    cmd[5] = (uint8_t)( user_data->bbp);
+    cmd[5] = (uint8_t)(user_data->bbp);
     ws_b(user_data->client, cmd, 6);
     uint8_t *ack = (uint8_t *)process(user_data, 1);
     if (!ack || !(*ack))
@@ -336,19 +337,19 @@ static void update(rfbClient *client, int x, int y, int w, int h)
     cmd[8] = (uint8_t)(h >> 8);
 
 #ifdef USE_JPEG
-    if((components == 3 || components == 4) && (user_data->flag ==1 || user_data->flag == 3))
+    if ((components == 3 || components == 4) && (user_data->flag == 1 || user_data->flag == 3))
     {
         int ret = jpeg_compress(tmp, w, h, components, user_data->quality);
-        if(ret > 0)
+        if (ret > 0)
         {
             flag |= 0x01;
             size = ret;
-        } 
+        }
     }
-    
+
 #endif
 #ifdef USE_ZLIB
-    if(user_data->flag >= 2)
+    if (user_data->flag >= 2)
     {
         flag |= 0x02;
         size = zlib_compress(tmp, size);
@@ -422,24 +423,64 @@ static char *get_password(rfbClient *client)
 
 void open_session(void *data, const char *addr)
 {
-    // main loop
     int argc = 2;
     char *argv[2];
     argv[0] = "-listennofork";
-    argv[1] = (char *)addr;
+    int len = 0;
+    FILE *fp = NULL;
+    char *buffer = NULL;
+    char c;
     wvnc_user_data_t *user_data = get_user_data(data);
-    LOG("client.BBP: %d\n", user_data->bbp );
-    LOG("client.flag: %d\n", user_data->flag );
-    LOG("client.JPEG.quality: %d\n", user_data->quality );
-    LOG("Server: %s\n", addr);
+    if (access(addr, F_OK) != -1)
+    {
+        //open the file
+        fp = fopen(addr, "r");
+        if (fp == NULL)
+        {
+            vnc_fatal(data, "Unable to read server file");
+            return;
+        }
+
+        // find length of first line
+        // lines end in "\n", but some malformed text files may not have this char at all
+        // and whole file contents will be considered as the first line
+        while ((c = fgetc(fp)) != EOF)
+        {
+            if (c == '\n')
+            {
+                break;
+            }
+            len++;
+        }
+
+        // allocate memory for size of first line (len)
+        buffer = (char *)malloc(sizeof(char) * len);
+
+        // seek to beginning of file
+        fseek(fp, 0, SEEK_SET);
+
+        fread(buffer, sizeof(char), len, fp);
+        fclose(fp);
+        argv[1] = buffer;
+    }
+    else
+    {
+        argv[1] = (char *)addr;
+    }
+    LOG("client.BBP: %d\n", user_data->bbp);
+    LOG("client.flag: %d\n", user_data->flag);
+    LOG("client.JPEG.quality: %d\n", user_data->quality);
+    LOG("Server: %s\n", argv[1]);
     //LOG("Rate is %d\n", user_data->rate);
     if (!rfbInitClient(user_data->vncl, &argc, argv))
     {
         user_data->vncl = NULL; /* rfbInitClient has already freed the client struct */
         //cleanup(vncl);
         vnc_fatal(user_data, "Cannot connect to the server");
+        if(buffer) free(buffer);
         return;
     }
+    if(buffer) free(buffer);
     while (1)
     {
         if (!user_data->status)
@@ -530,7 +571,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         break;
     case 0x06: // key board event
         //LOG("Key is %c\n", header.data[0]);
-        SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2]?TRUE:FALSE);
+        SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2] ? TRUE : FALSE);
         break;
     case 0x07:
         SendClientCutText(user_data->vncl, header.data, strlen(header.data));
@@ -546,10 +587,10 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     LOG("received clipboard text '%s'\n", text);
     void *data = rfbClientGetClientData(cl, identify());
     wvnc_user_data_t *user_data = get_user_data(data);
-    uint8_t* cmd = (uint8_t*) malloc(len+1);
+    uint8_t *cmd = (uint8_t *)malloc(len + 1);
     cmd[0] = 0x85;
-    memcpy(cmd+1, text, len);
-    ws_b(user_data->client,cmd,len+1);
+    memcpy(cmd + 1, text, len);
+    ws_b(user_data->client, cmd, len + 1);
     free(cmd);
     uint8_t *ack = (uint8_t *)process(user_data, 1);
     if (!ack || !(*ack))
