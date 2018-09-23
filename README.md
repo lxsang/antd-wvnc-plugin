@@ -5,7 +5,7 @@ An [Antd HTTP/HTTPS server's](https://github.com/lxsang/ant-http) plugin that ac
 To speed up the data transmission, **WVNC** uses **libjpeg** and **zlib** for data compression.
 
 ## Demo
-A demo will soon be available
+A demo of a web based VNC client using the plugin is available at: [https://apps.lxsang.me/webVNC](https://apps.lxsang.me/webVNC)
 
 ## Build from source
 As **WVNC** is an **Antd's** plugin, it need to be built along with the server. This require the following application/libraries to be pre installed:
