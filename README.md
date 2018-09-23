@@ -8,7 +8,7 @@ To speed up the data transmission, **WVNC** uses **libjpeg** and **zlib** for da
 A demo of a web based VNC client using the plugin is available at: [https://apps.lxsang.me/webVNC](https://apps.lxsang.me/webVNC)
 
 ## Build from source
-As **WVNC** is an **Antd's** plugin, it need to be built along with the server. This require the following application/libraries to be pre installed:
+As **WVNC** is an **Antd's** plugin, it need to be built along with the server. This requires the following application/libraries to be pre installed:
 
 ### build dep
 * git
