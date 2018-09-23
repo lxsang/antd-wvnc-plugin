@@ -25,14 +25,14 @@ As **WVNC** is an **Antd's** plugin, it need to be built along with the server. 
 * libvncserver-dev
 
 ### build
-When all dependencies are isntalled, the build can be done with a few single command lines:
+When all dependencies are installed, the build can be done with a few single command lines:
 
 ```bash
 mkdir antd
 cd antd
 wget -O - https://apps.lxsang.me/script/antd | bash -s "wvnc"
 ```
-The script will ask you where you want to put the binaries (should be an absolute path, otherwise the build will fail) and the default HTTP port for the server config.
+The script will ask for a place to put the binaries (should be an absolute path, otherwise the build will fail) and the default HTTP port for the server config.
 
 ## Run
 To run the Antd server with the **wvnc** plugin:
@@ -44,4 +44,4 @@ Web applications can be put on **/path/to/your/build/htdocs**, the web socket to
 ```
 ws://your_host:your_port/wvnc
 ```
-This websocket address can be used with my client side javascript library [**wvnc.js**](https://github.com/lxsang/wvnc.js) to develop web based VNC client 
+This websocket address can be used with my client side javascript library [**wvnc.js**](https://github.com/lxsang/wvnc.js) to provide web based VNC client 
