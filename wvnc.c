@@ -491,7 +491,7 @@ void open_session(void *data, const char *addr)
         }
         process(user_data, 0);
         //LOG("ENd process \n");
-        int status = WaitForMessage(user_data->vncl, 500); //500
+        int status = WaitForMessage(user_data->vncl, 200); //500
         if (status < 0)
         {
             if (user_data->vncl)
@@ -614,7 +614,7 @@ void handle(void *cl, const char *m, const char *rqp, dictionary rq)
         // set timeout to socket
         struct timeval timeout;
         timeout.tv_sec = 0;
-        timeout.tv_usec = 500;
+        timeout.tv_usec = 200;
 
         if (setsockopt(((antd_client_t *)cl)->sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
             perror("setsockopt failed\n");
@@ -651,4 +651,8 @@ void handle(void *cl, const char *m, const char *rqp, dictionary rq)
         __t(cl, "Welcome to WVNC, plese use a websocket connection");
     }
     LOG("%s\n", "EXIT Streaming..");
+}
+void init()
+{
+    
 }
