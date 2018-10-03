@@ -1,6 +1,6 @@
 # antd-wvnc-plugin
 
-Overview about wvnc: [https://blog.lxsang.me/r/id/23](https://blog.lxsang.me/r/id/23)
+Overview about wvnc: [https://blog.lxsang.me/post/id/23](https://blog.lxsang.me/post/id/23)
 
 An [Antd HTTP/HTTPS server's](https://github.com/lxsang/ant-http) plugin that acts as a bridge between a VNC server and web applications. It allows web application to communicate with VNC server using web socket via a predefined protocol and message format. Web application can use my dedicate javascript library called [**wvnc.js**](https://github.com/lxsang/wvnc.js) to communicate with the VNC server using the plugin.
 
