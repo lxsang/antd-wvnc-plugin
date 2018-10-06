@@ -2,7 +2,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <rfb/rfbclient.h>
-#include <pthread.h>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -24,10 +23,13 @@ typedef struct
     uint8_t *data;
 
 } wvnc_cmd_t;
+
+typedef enum { DISCONNECTED, READY, CONNECTED } wvnc_connect_t;
+
 typedef struct
 {
-    void *client;
-    uint8_t status;
+    antd_request_t *wscl;
+    wvnc_connect_t status;
     void *vncl;
     uint8_t bbp;
     uint8_t flag;
@@ -46,7 +48,6 @@ typedef struct
 } wvnc_pixel_format_t;
 
 void *vnc_fatal(void *client, const char *msg);
-void *identify();
 void *process(void *cl, int wait);
 static rfbBool resize(rfbClient *client);
 void open_session(void *client, const char *addr);
@@ -158,31 +159,19 @@ int get_pixel_format(uint8_t deep, wvnc_pixel_format_t *d)
     return 0;
 }
 
-void pexit()
-{
-}
-
-void *identify()
-{
-    void *ptr = (void *)pthread_self();
-    //printf("stackaddr = %p\n", ptr);
-    return ptr;
-}
-
 void *process(void *data, int wait)
 {
     wvnc_user_data_t *user_data = get_user_data(data);
     uint8_t *buff = NULL;
     ws_msg_header_t *h = NULL;
-    while (!(h = ws_read_header(user_data->client)) && user_data->status && wait)
-        ;
+    while (!(h = ws_read_header(user_data->wscl->client)) && user_data->status != DISCONNECTED && wait);
     if (h)
     {
         if (h->mask == 0)
         {
             LOG("%s\n", "data is not masked");
-            ws_close(user_data->client, 1012);
-            user_data->status = 0;
+            ws_close(user_data->wscl->client, 1012);
+            user_data->status = DISCONNECTED;
             free(h);
             return NULL;
             //break;
@@ -190,8 +179,8 @@ void *process(void *data, int wait)
         if (h->opcode == WS_CLOSE)
         {
             LOG("%s\n", "Websocket: connection closed");
-            ws_close(user_data->client, 1011);
-            user_data->status = 0;
+            ws_close(user_data->wscl->client, 1011);
+            user_data->status = DISCONNECTED;
             free(h);
             return 0;
             //break;
@@ -207,7 +196,7 @@ void *process(void *data, int wait)
             }
             // read the command from the client
             int len = h->plen;
-            if ((l = ws_read_data(user_data->client, h, h->plen, buff)) > 0)
+            if ((l = ws_read_data(user_data->wscl->client, h, h->plen, buff)) > 0)
             {
 
                 // process client command
@@ -251,7 +240,7 @@ static rfbBool resize(rfbClient *client)
     client->updateRect.x = client->updateRect.y = 0;
     client->updateRect.w = width;
     client->updateRect.h = height;
-    void *data = rfbClientGetClientData(client, identify());
+    void *data = rfbClientGetClientData(client, client);
     wvnc_user_data_t *user_data = get_user_data(data);
     //client->width = sdl->pitch / (depth / 8);
     if (client->frameBuffer)
@@ -281,7 +270,7 @@ static rfbBool resize(rfbClient *client)
     cmd[3] = (uint8_t)(height & 0xFF);
     cmd[4] = (uint8_t)(height >> 8);
     cmd[5] = (uint8_t)(user_data->bbp);
-    ws_b(user_data->client, cmd, 6);
+    ws_b(user_data->wscl->client, cmd, 6);
     uint8_t *ack = (uint8_t *)process(user_data, 1);
     if (!ack || !(*ack))
     {
@@ -296,7 +285,7 @@ static rfbBool resize(rfbClient *client)
 
 static void update(rfbClient *client, int x, int y, int w, int h)
 {
-    wvnc_user_data_t *user_data = get_user_data(rfbClientGetClientData(client, identify()));
+    wvnc_user_data_t *user_data = get_user_data(rfbClientGetClientData(client, client));
     uint8_t components = (uint8_t)client->format.bitsPerPixel / 8;
     int size = w * h * components;
     uint8_t *cmd = (uint8_t *)malloc(size + 10); // + 9
@@ -356,13 +345,13 @@ static void update(rfbClient *client, int x, int y, int w, int h)
     }
 #endif
     cmd[9] = flag;
-    ws_b(user_data->client, cmd, size + 10);
+    ws_b(user_data->wscl->client, cmd, size + 10);
     free(cmd);
 }
 
 static rfbCredential *get_credential(rfbClient *cl, int credentialType)
 {
-    wvnc_user_data_t *user_data = get_user_data(rfbClientGetClientData(cl, identify()));
+    wvnc_user_data_t *user_data = get_user_data(rfbClientGetClientData(cl, cl));
     rfbCredential *c = malloc(sizeof(rfbCredential));
     c->userCredential.username = malloc(RFB_BUF_SIZE);
     c->userCredential.password = malloc(RFB_BUF_SIZE);
@@ -374,7 +363,7 @@ static rfbCredential *get_credential(rfbClient *cl, int credentialType)
     }
     uint8_t cmd[1];
     cmd[0] = 0x82;
-    ws_b(user_data->client, cmd, 1);
+    ws_b(user_data->wscl->client, cmd, 1);
     char *up = (char *)process(user_data, 1);
     if (!up)
     {
@@ -404,10 +393,10 @@ static rfbCredential *get_credential(rfbClient *cl, int credentialType)
 static char *get_password(rfbClient *client)
 {
     uint8_t cmd[1];
-    void *data = rfbClientGetClientData(client, identify());
+    void *data = rfbClientGetClientData(client, client);
     wvnc_user_data_t *user_data = get_user_data(data);
     cmd[0] = 0x81; // resize command
-    ws_b(user_data->client, cmd, 1);
+    ws_b(user_data->wscl->client, cmd, 1);
 
     // call process to get the password
     char *pwd = (char *)process(user_data, 1);
@@ -481,34 +470,46 @@ void open_session(void *data, const char *addr)
         return;
     }
     if(buffer) free(buffer);
-    while (1)
+    user_data->status = CONNECTED;
+}
+
+void* waitfor(void* data)
+{
+    wvnc_user_data_t *user_data = get_user_data(data);
+    antd_task_t* task = NULL;
+    process(user_data, 0);
+    if (user_data->status == DISCONNECTED)
     {
-        if (!user_data->status)
-        {
-            if (user_data->vncl)
-                rfbClientCleanup(user_data->vncl);
-            break;
-        }
-        process(user_data, 0);
-        //LOG("ENd process \n");
+        // quit
+        goto quit;
+    }
+    if (user_data->status == CONNECTED)
+    {
+        // process other message
         int status = WaitForMessage(user_data->vncl, 200); //500
         if (status < 0)
         {
-            if (user_data->vncl)
-                rfbClientCleanup(user_data->vncl);
-            break;
+            goto quit;
         }
         if (status)
         {
             if (!HandleRFBServerMessage(user_data->vncl))
             {
-                if (user_data->vncl)
-                    rfbClientCleanup(user_data->vncl);
-                break;
+                goto quit;
             }
         }
     }
-    return;
+    task = antd_create_task(waitfor, user_data, NULL);
+    task->priority++;
+    task->type = HEAVY;
+    return task;
+quit:
+    if (user_data->vncl)
+        rfbClientCleanup(user_data->vncl);
+    task = antd_create_task(NULL, user_data->wscl, NULL);
+    task->priority++;
+    free(user_data);
+    return task;
 }
 
 void *vnc_fatal(void *data, const char *msg)
@@ -523,15 +524,15 @@ void *vnc_fatal(void *data, const char *msg)
     LOG("%s\n", msg);
     uint8_t *cmd = (uint8_t *)malloc(size);
     cmd[0] = 0xFE; // error opcode
-    user_data->status = 0;
+    user_data->status = DISCONNECTED;
     if (cmd)
     {
         memcpy(cmd + 1, (uint8_t *)msg, len);
-        ws_b(user_data->client, cmd, size);
+        ws_b(user_data->wscl->client, cmd, size);
         free(cmd);
     }
     // quit the socket
-    ws_close(user_data->client, 1011);
+    ws_close(user_data->wscl->client, 1011);
     return 0;
 }
 
@@ -585,12 +586,12 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
 static void got_clipboard(rfbClient *cl, const char *text, int len)
 {
     LOG("received clipboard text '%s'\n", text);
-    void *data = rfbClientGetClientData(cl, identify());
+    void *data = rfbClientGetClientData(cl, cl);
     wvnc_user_data_t *user_data = get_user_data(data);
     uint8_t *cmd = (uint8_t *)malloc(len + 1);
     cmd[0] = 0x85;
     memcpy(cmd + 1, text, len);
-    ws_b(user_data->client, cmd, len + 1);
+    ws_b(user_data->wscl->client, cmd, len + 1);
     free(cmd);
     uint8_t *ack = (uint8_t *)process(user_data, 1);
     if (!ack || !(*ack))
@@ -603,21 +604,20 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     free(ack);
 }
 
-void handle(void *cl, const char *m, const char *rqp, dictionary rq)
+void* handle(void *data)
 {
-    if (ws_enable(rq))
+    antd_request_t *rq = (antd_request_t *)data;
+	void *cl = (void *)rq->client;
+    if (ws_enable(rq->request))
     {
-#ifdef USE_ZLIB
-        LOG("Zlib is enabled\n");
-#endif
         //set time out for the tcp socket
         // set timeout to socket
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 200;
+        //struct timeval timeout;
+        //timeout.tv_sec = 0;
+       // timeout.tv_usec = 200;
 
-        if (setsockopt(((antd_client_t *)cl)->sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
-            perror("setsockopt failed\n");
+        //if (setsockopt(((antd_client_t *)cl)->sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
+        //    perror("setsockopt failed\n");
 
         //if (setsockopt (((antd_client_t*)cl)->sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,sizeof(timeout)) < 0)
         //	perror("setsockopt failed\n");
@@ -636,23 +636,33 @@ void handle(void *cl, const char *m, const char *rqp, dictionary rq)
         vncl->listenPort = LISTEN_PORT_OFFSET;
         vncl->listen6Port = LISTEN_PORT_OFFSET;
         wvnc_user_data_t *user_data = (wvnc_user_data_t *)malloc(sizeof(wvnc_user_data_t));
-        user_data->client = cl;
-        user_data->status = 1;
+        user_data->wscl = rq;
+        user_data->status = READY; // 1 for ready for connect
         user_data->vncl = vncl;
-        rfbClientSetClientData(vncl, identify(), user_data);
+        rfbClientSetClientData(vncl, vncl, user_data);
         //while(1)
         //{
-        process(user_data, 1);
+        antd_task_t *task = antd_create_task(waitfor, (void *)user_data, NULL);
+	    task->priority++;
+        task->type = HEAVY;
+        return task;
         //}
     }
     else
     {
         html(cl);
         __t(cl, "Welcome to WVNC, plese use a websocket connection");
+        antd_task_t *task = antd_create_task(NULL, (void *)rq, NULL);
+	    task->priority++;
+        return task;
     }
-    LOG("%s\n", "EXIT Streaming..");
+    //LOG("%s\n", "EXIT Streaming..");
 }
 void init()
 {
     
+}
+void destroy()
+{
+
 }
