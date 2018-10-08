@@ -30,7 +30,7 @@ typedef struct
 {
     antd_request_t *wscl;
     wvnc_connect_t status;
-    void *vncl;
+    rfbClient *vncl;
     uint8_t bbp;
     uint8_t flag;
     uint8_t quality;
@@ -111,15 +111,16 @@ int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
     jpeg_start_compress(&cinfo, true);
     //unsigned counter = 0;
     JSAMPROW row_pointer[1];
+    row_pointer[0] = NULL;
     while (cinfo.next_scanline < cinfo.image_height)
     {
         row_pointer[0] = (JSAMPROW)(&tmp[cinfo.next_scanline * w * components]);
-        unsigned return_code = jpeg_write_scanlines(&cinfo, row_pointer, 1);
+        jpeg_write_scanlines(&cinfo, row_pointer, 1);
     }
     jpeg_finish_compress(&cinfo);
     jpeg_destroy_compress(&cinfo);
     //LOG("before %d after %d\n",  w*h*bbp, );
-    if (outbuffer_size < w * h * components)
+    if (outbuffer_size < (unsigned long)(w * h * components))
     {
         memcpy(buff, out, outbuffer_size);
     }
@@ -244,7 +245,10 @@ static rfbBool resize(rfbClient *client)
     wvnc_user_data_t *user_data = get_user_data(data);
     //client->width = sdl->pitch / (depth / 8);
     if (client->frameBuffer)
+    {
         free(client->frameBuffer);
+        client->frameBuffer = NULL;
+    }
     client->frameBuffer = (uint8_t *)malloc(width * height * user_data->bbp / 8);
     wvnc_pixel_format_t pxf;
     if (!get_pixel_format(user_data->bbp, &pxf))
@@ -406,7 +410,7 @@ static char *get_password(rfbClient *client)
         vnc_fatal(user_data, "Cannot read user password");
         return NULL;
     }
-    LOG("Password is '%s'\n", pwd);
+    //LOG("Password is '%s'\n", pwd);
     return pwd;
 }
 
@@ -443,11 +447,11 @@ void open_session(void *data, const char *addr)
         }
 
         // allocate memory for size of first line (len)
-        buffer = (char *)malloc(sizeof(char) * len);
+        buffer = (char *)malloc(sizeof(char) * (len+1));
 
         // seek to beginning of file
         fseek(fp, 0, SEEK_SET);
-
+        buffer[len] = '\0';
         fread(buffer, sizeof(char), len, fp);
         fclose(fp);
         argv[1] = buffer;
@@ -504,6 +508,11 @@ void* waitfor(void* data)
     task->type = HEAVY;
     return task;
 quit:
+    if(user_data->vncl->frameBuffer)
+    { 
+        free(user_data->vncl->frameBuffer);
+        user_data->vncl->frameBuffer = NULL;
+    }
     if (user_data->vncl)
         rfbClientCleanup(user_data->vncl);
     task = antd_create_task(NULL, user_data->wscl, NULL);
@@ -575,7 +584,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2] ? TRUE : FALSE);
         break;
     case 0x07:
-        SendClientCutText(user_data->vncl, header.data, strlen(header.data));
+        SendClientCutText(user_data->vncl, (char*)header.data, strlen((char*)header.data));
         break;
     default:
         return vnc_fatal(user_data, "Unknown client command");
