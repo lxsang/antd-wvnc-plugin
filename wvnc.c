@@ -2,6 +2,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <rfb/rfbclient.h>
+#include <pthread.h>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -36,6 +37,7 @@ typedef struct
     uint8_t quality;
     //int rate;
 } wvnc_user_data_t;
+
 
 typedef struct
 {
@@ -477,48 +479,29 @@ void open_session(void *data, const char *addr)
     user_data->status = CONNECTED;
 }
 
-void* waitfor(void* data)
+void waitfor(void* data)
 {
     wvnc_user_data_t *user_data = get_user_data(data);
-    antd_task_t* task = NULL;
-    process(user_data, 0);
-    if (user_data->status == DISCONNECTED)
+    while (user_data->status != DISCONNECTED)
     {
-        // quit
-        goto quit;
-    }
-    if (user_data->status == CONNECTED)
-    {
-        // process other message
-        int status = WaitForMessage(user_data->vncl, 200); //500
-        if (status < 0)
+        process(user_data, 0);
+        if (user_data->status == CONNECTED)
         {
-            goto quit;
-        }
-        if (status)
-        {
-            if (!HandleRFBServerMessage(user_data->vncl))
+            // process other message
+            int status = WaitForMessage(user_data->vncl, 500); //500
+            if (status < 0)
             {
-                goto quit;
+                break;
+            }
+            if (status)
+            {
+                if (!HandleRFBServerMessage(user_data->vncl))
+                {
+                    break;
+                }
             }
         }
     }
-    task = antd_create_task(waitfor, user_data, NULL);
-    task->priority++;
-    task->type = HEAVY;
-    return task;
-quit:
-    if(user_data->vncl->frameBuffer)
-    { 
-        free(user_data->vncl->frameBuffer);
-        user_data->vncl->frameBuffer = NULL;
-    }
-    if (user_data->vncl)
-        rfbClientCleanup(user_data->vncl);
-    task = antd_create_task(NULL, user_data->wscl, NULL);
-    task->priority++;
-    free(user_data);
-    return task;
 }
 
 void *vnc_fatal(void *data, const char *msg)
@@ -612,59 +595,80 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     }
     free(ack);
 }
-
+void* waitchild(void* data)
+{
+    wvnc_user_data_t *user_data = (wvnc_user_data_t*)(data);
+    antd_task_t* task = NULL;
+    if(user_data->status == DISCONNECTED)
+    {
+        task = antd_create_task(NULL, user_data->wscl, NULL);
+        free(user_data);
+    }
+    else
+        task = antd_create_task(waitchild, user_data, NULL);
+    task->priority++;
+    return task;
+}
+void event_loop(void* data)
+{
+    wvnc_user_data_t *user_data = get_user_data(data);
+    rfbClient *vncl = NULL;
+    vncl = rfbGetClient(8, 3, 4);
+    vncl->MallocFrameBuffer = resize;
+    vncl->canHandleNewFBSize = TRUE;
+    vncl->GotFrameBufferUpdate = update;
+    vncl->GetPassword = get_password;
+    //cl->HandleKeyboardLedState=kbd_leds;
+    //cl->HandleTextChat=text_chat;
+    vncl->GotXCutText = got_clipboard;
+    vncl->GetCredential = get_credential;
+    vncl->listenPort = LISTEN_PORT_OFFSET;
+    vncl->listen6Port = LISTEN_PORT_OFFSET;
+    user_data->status = READY; // 1 for ready for connect
+    user_data->vncl = vncl;
+    rfbClientSetClientData(vncl, vncl, user_data);
+    waitfor((void*) user_data);
+    // child
+    if(user_data->vncl->frameBuffer)
+    { 
+        free(user_data->vncl->frameBuffer);
+        user_data->vncl->frameBuffer = NULL;
+    }
+    if (user_data->vncl)
+        rfbClientCleanup(user_data->vncl);
+}
 void* handle(void *data)
 {
     antd_request_t *rq = (antd_request_t *)data;
+    pthread_t th;
+    antd_task_t *task = NULL;
 	void *cl = (void *)rq->client;
+    wvnc_user_data_t *user_data = (wvnc_user_data_t *)malloc(sizeof(wvnc_user_data_t));
+    user_data->wscl = rq;
     if (ws_enable(rq->request))
     {
-        //set time out for the tcp socket
-        // set timeout to socket
-        //struct timeval timeout;
-        //timeout.tv_sec = 0;
-       // timeout.tv_usec = 200;
-
-        //if (setsockopt(((antd_client_t *)cl)->sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0)
-        //    perror("setsockopt failed\n");
-
-        //if (setsockopt (((antd_client_t*)cl)->sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,sizeof(timeout)) < 0)
-        //	perror("setsockopt failed\n");
-
-        //rfbClient* vncl;
-        rfbClient *vncl = NULL;
-        vncl = rfbGetClient(8, 3, 4);
-        vncl->MallocFrameBuffer = resize;
-        vncl->canHandleNewFBSize = TRUE;
-        vncl->GotFrameBufferUpdate = update;
-        vncl->GetPassword = get_password;
-        //cl->HandleKeyboardLedState=kbd_leds;
-        //cl->HandleTextChat=text_chat;
-        vncl->GotXCutText = got_clipboard;
-        vncl->GetCredential = get_credential;
-        vncl->listenPort = LISTEN_PORT_OFFSET;
-        vncl->listen6Port = LISTEN_PORT_OFFSET;
-        wvnc_user_data_t *user_data = (wvnc_user_data_t *)malloc(sizeof(wvnc_user_data_t));
-        user_data->wscl = rq;
-        user_data->status = READY; // 1 for ready for connect
-        user_data->vncl = vncl;
-        rfbClientSetClientData(vncl, vncl, user_data);
-        //while(1)
-        //{
-        antd_task_t *task = antd_create_task(waitfor, (void *)user_data, NULL);
-	    task->priority++;
-        task->type = HEAVY;
-        return task;
-        //}
+        if (pthread_create(&th, NULL,(void* (*)(void *))event_loop, (void*)user_data) != 0)
+        {
+            free(user_data);
+            perror("pthread_create: cannot create thread for wvnc\n");
+        }
+        else
+        {
+            pthread_detach(th);
+            task = antd_create_task(waitchild, (void *)user_data, NULL);
+            task->priority++;
+            return task;
+        }
     }
     else
     {
         html(cl);
-        __t(cl, "Welcome to WVNC, plese use a websocket connection");
-        antd_task_t *task = antd_create_task(NULL, (void *)rq, NULL);
-	    task->priority++;
-        return task;
+        __t(cl, "Welcome to WVNC, please use a websocket connection");
+        
     }
+    task = antd_create_task(NULL, (void *)rq, NULL);
+    task->priority++;
+    return task;
     //LOG("%s\n", "EXIT Streaming..");
 }
 void init()
