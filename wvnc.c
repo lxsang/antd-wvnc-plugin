@@ -481,14 +481,29 @@ void open_session(void *data, const char *addr)
 
 void waitfor(void* data)
 {
+    fd_set fd_in;
     wvnc_user_data_t *user_data = get_user_data(data);
+    struct timeval timeout;      
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 500;
     while (user_data->status != DISCONNECTED)
     {
-        process(user_data, 0);
+        FD_ZERO(&fd_in);
+	    FD_SET(user_data->wscl->client->sock, &fd_in);
+	    int rc = select(user_data->wscl->client->sock + 1, &fd_in, NULL, NULL, &timeout);
+        if(rc == -1)
+        {
+            LOG("Client may disconnected \n");
+            return;
+        }
+        if(rc > 0 && FD_ISSET(user_data->wscl->client->sock, &fd_in))
+        {
+            process(user_data, 0);
+        }
         if (user_data->status == CONNECTED)
         {
             // process other message
-            int status = WaitForMessage(user_data->vncl, 500); //500
+            int status = WaitForMessage(user_data->vncl, 200); //500
             if (status < 0)
             {
                 break;
@@ -516,7 +531,6 @@ void *vnc_fatal(void *data, const char *msg)
     LOG("%s\n", msg);
     uint8_t *cmd = (uint8_t *)malloc(size);
     cmd[0] = 0xFE; // error opcode
-    user_data->status = DISCONNECTED;
     if (cmd)
     {
         memcpy(cmd + 1, (uint8_t *)msg, len);
@@ -525,6 +539,7 @@ void *vnc_fatal(void *data, const char *msg)
     }
     // quit the socket
     ws_close(user_data->wscl->client, 1011);
+    user_data->status = DISCONNECTED;
     return 0;
 }
 
@@ -595,20 +610,7 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     }
     free(ack);
 }
-void* waitchild(void* data)
-{
-    wvnc_user_data_t *user_data = (wvnc_user_data_t*)(data);
-    antd_task_t* task = NULL;
-    if(user_data->status == DISCONNECTED)
-    {
-        task = antd_create_task(NULL, user_data->wscl, NULL);
-        free(user_data);
-    }
-    else
-        task = antd_create_task(waitchild, user_data, NULL);
-    task->priority++;
-    return task;
-}
+
 void event_loop(void* data)
 {
     wvnc_user_data_t *user_data = get_user_data(data);
@@ -629,13 +631,16 @@ void event_loop(void* data)
     rfbClientSetClientData(vncl, vncl, user_data);
     waitfor((void*) user_data);
     // child
-    if(user_data->vncl->frameBuffer)
+    if( user_data->vncl && user_data->vncl->frameBuffer)
     { 
         free(user_data->vncl->frameBuffer);
         user_data->vncl->frameBuffer = NULL;
     }
     if (user_data->vncl)
         rfbClientCleanup(user_data->vncl);
+    // close the connection before free data
+    destroy_request(user_data->wscl);
+    free(user_data);
 }
 void* handle(void *data)
 {
@@ -643,10 +648,10 @@ void* handle(void *data)
     pthread_t th;
     antd_task_t *task = NULL;
 	void *cl = (void *)rq->client;
-    wvnc_user_data_t *user_data = (wvnc_user_data_t *)malloc(sizeof(wvnc_user_data_t));
-    user_data->wscl = rq;
     if (ws_enable(rq->request))
     {
+        wvnc_user_data_t *user_data = (wvnc_user_data_t *)malloc(sizeof(wvnc_user_data_t));
+        user_data->wscl = rq;
         if (pthread_create(&th, NULL,(void* (*)(void *))event_loop, (void*)user_data) != 0)
         {
             free(user_data);
@@ -655,7 +660,7 @@ void* handle(void *data)
         else
         {
             pthread_detach(th);
-            task = antd_create_task(waitchild, (void *)user_data, NULL);
+            task = antd_create_task(NULL, NULL, NULL);
             task->priority++;
             return task;
         }
