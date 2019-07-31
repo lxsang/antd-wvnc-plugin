@@ -660,7 +660,7 @@ void* handle(void *data)
         else
         {
             pthread_detach(th);
-            task = antd_create_task(NULL, NULL, NULL);
+            task = antd_create_task(NULL, NULL, NULL, time(NULL));
             task->priority++;
             return task;
         }
@@ -671,7 +671,7 @@ void* handle(void *data)
         __t(cl, "Welcome to WVNC, please use a websocket connection");
         
     }
-    task = antd_create_task(NULL, (void *)rq, NULL);
+    task = antd_create_task(NULL, (void *)rq, NULL, rq->client->last_io);
     task->priority++;
     return task;
     //LOG("%s\n", "EXIT Streaming..");
