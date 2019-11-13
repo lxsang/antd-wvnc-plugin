@@ -9,7 +9,7 @@
 #ifdef USE_JPEG
 #include <jpeglib.h>
 #endif
-#include "plugin.h"
+#include <antd/plugin.h>
 #define get_user_data(x) ((wvnc_user_data_t *)x)
 #define R_SHIFT(x) (0)
 #define G_SHIFT(x) ((x >= 24) ? 8 :)

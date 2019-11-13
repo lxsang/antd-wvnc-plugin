@@ -7,16 +7,13 @@ An [Antd HTTP/HTTPS server's](https://github.com/lxsang/ant-http) plugin that ac
 To speed up the data transmission, **WVNC** uses **libjpeg** and **zlib** for data compression.
 
 ## Build from source
-As **WVNC** is an **Antd's** plugin, it need to be built along with the server. This requires the following application/libraries to be pre installed:
+As **WVNC** is an **Antd's** plugin, the server need to be pre-installed:
 
 ### build dep
 * git
 * make
 * build-essential
 
-### server dependencies
-* libssl-dev
-* libsqlite3-dev
 
 ### Plugin Dependencies
 * Zlib
@@ -27,11 +24,17 @@ As **WVNC** is an **Antd's** plugin, it need to be built along with the server. 
 When all dependencies are installed, the build can be done with a few single command lines:
 
 ```bash
-mkdir antd
-cd antd
-wget -O- https://get.bitdojo.dev/antd | bash -s "wvnc"
+# replace x.x.x by a version number
+wget -O- https://get.bitdojo.dev/antd_plugin | bash -s "wvnc-x.x.x"
+
+# or from the distribution tarball
+tar xvzf wvnc-x.x.x.tar.gz
+cd wvnc-x.x.x
+./configure --prefix=/opt/www --enable-debug=yes
+make
+sudo make install
+
 ```
-The script will ask for a place to put the binaries (should be an absolute path, otherwise the build will fail) and the default HTTP port for the server config.
 
 ## Run
 To run the Antd server with the **wvnc** plugin:
@@ -44,3 +47,12 @@ Web applications can be put on **/path/to/your/build/htdocs**, the web socket to
 ws://your_host:your_port/wvnc
 ```
 This websocket address can be used with my client side javascript library [**wvnc.js**](https://github.com/lxsang/wvnc.js) to provide web based VNC client 
+
+### Generate distribution
+```sh
+libtoolize
+aclocal
+autoconf
+automake --add-missing
+make distcheck
+``` 
