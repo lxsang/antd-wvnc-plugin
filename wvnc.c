@@ -668,9 +668,7 @@ void* handle(void *data)
     }
     else
     {
-        html(cl);
-        __t(cl, "Welcome to WVNC, please use a websocket connection");
-        
+        antd_error(cl,400,"Please use a websocket connection");
     }
     task = antd_create_task(NULL, (void *)rq, NULL, rq->client->last_io);
     task->priority++;
