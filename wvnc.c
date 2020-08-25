@@ -11,6 +11,9 @@
 #include <jpeglib.h>
 #endif
 #include <antd/plugin.h>
+#include <antd/scheduler.h>
+#include <antd/ws.h>
+
 #define get_user_data(x) ((wvnc_user_data_t *)x)
 #define R_SHIFT(x) (0)
 #define G_SHIFT(x) ((x >= 24) ? 8 :)
@@ -455,7 +458,7 @@ void open_session(void *data, const char *addr)
         // seek to beginning of file
         fseek(fp, 0, SEEK_SET);
         buffer[len] = '\0';
-        fread(buffer, sizeof(char), len, fp);
+        UNUSED(fread(buffer, sizeof(char), len, fp));
         fclose(fp);
         argv[1] = buffer;
     }
