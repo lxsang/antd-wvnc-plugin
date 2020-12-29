@@ -39,28 +39,12 @@ AC_CHECK_LIB([dl], [dlopen], [], [
 use_jpeg=no
 # check if libssl header exists
 AC_CHECK_HEADER([jpeglib.h],[
-    # check if the library exists
-    AC_DEFINE([USE_JPEG], [1],[Use jpeglib])
     use_jpeg=yes
-], [])
-AC_CHECK_LIB([jpeg],[jpeg_CreateCompress],[], [
-    if test "$use_jpeg" = "yes"; then
-        AC_MSG_ERROR([Unable to find libjpeg shared library])
-    fi
+], [
+    AC_MSG_ERROR([Unable to find jpeglib, please install it first])
 ])
-
-# check for zlib
-use_zlib=no
-# check if libssl header exists
-AC_CHECK_HEADER([zlib.h],[
-    # check if the library exists
-    AC_DEFINE([USE_ZLIB], [1],[Use zlib])
-    use_zlib=yes
-], [])
-AC_CHECK_LIB([z],[deflate],[], [
-    if test "$use_zlib" = "yes"; then
-        AC_MSG_ERROR([Unable to find libz shared library])
-    fi
+AC_CHECK_LIB([jpeg],[jpeg_CreateCompress],[], [
+    AC_MSG_ERROR([Unable to find libjpeg shared library])
 ])
 
 

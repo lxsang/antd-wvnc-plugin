@@ -4,19 +4,12 @@
 #include <unistd.h>
 #include <rfb/rfbclient.h>
 #include <pthread.h>
-#ifdef USE_ZLIB
-#include <zlib.h>
-#endif
-#ifdef USE_JPEG
 #include <jpeglib.h>
-#endif
 #include <antd/plugin.h>
 #include <antd/scheduler.h>
 #include <antd/ws.h>
 
 #define get_user_data(x) ((wvnc_user_data_t *)x)
-#define R_SHIFT(x) (0)
-#define G_SHIFT(x) ((x >= 24) ? 8 :)
 /*
 Vnc to web socket using the
 libvncserver/libvncclient
@@ -29,7 +22,12 @@ typedef struct
 
 } wvnc_cmd_t;
 
-typedef enum { DISCONNECTED, READY, CONNECTED } wvnc_connect_t;
+typedef enum
+{
+    DISCONNECTED,
+    READY,
+    CONNECTED
+} wvnc_connect_t;
 
 typedef struct
 {
@@ -41,7 +39,6 @@ typedef struct
     uint8_t quality;
     //int rate;
 } wvnc_user_data_t;
-
 
 typedef struct
 {
@@ -61,34 +58,10 @@ void *consume_client(void *cl, wvnc_cmd_t header);
 static rfbCredential *get_credential(rfbClient *cl, int credentialType);
 static void update(rfbClient *cl, int x, int y, int w, int h);
 
-#ifdef USE_ZLIB
-int zlib_compress(uint8_t *src, int len)
-{
-    uint8_t *dest = (uint8_t *)malloc(len);
-    z_stream defstream;
-    defstream.zalloc = Z_NULL;
-    defstream.zfree = Z_NULL;
-    defstream.opaque = Z_NULL;
-    // setup "a" as the input and "b" as the compressed output
-    defstream.avail_in = (uInt)len;     // size of input
-    defstream.next_in = (Bytef *)src;   // input char array
-    defstream.avail_out = (uInt)len;    // size of output
-    defstream.next_out = (Bytef *)dest; // output char array
-
-    // the actual compression work.
-    deflateInit(&defstream, Z_BEST_COMPRESSION);
-    deflate(&defstream, Z_FINISH);
-    deflateEnd(&defstream);
-    memcpy(src, dest, defstream.total_out);
-    free(dest);
-    return defstream.total_out;
-}
-#endif
-
-#ifdef USE_JPEG
-int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
+int jpeg_compress(uint8_t *buff, int w, int h, int bytes, int quality)
 {
     uint8_t *tmp = buff;
+    uint8_t *tmp_row = NULL;
     /*if(bbp == 4)
     {
         tmp = (uint8_t*)malloc(w*h*(bbp-1));
@@ -104,29 +77,62 @@ int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
     jerror.trace_level = 10;
     cinfo.err->trace_level = 10;
     jpeg_create_compress(&cinfo);
-
     uint8_t *out = NULL;
     unsigned long outbuffer_size = 0;
     jpeg_mem_dest(&cinfo, &out, &outbuffer_size);
     cinfo.image_width = w;
     cinfo.image_height = h;
-    cinfo.input_components = components;
-    cinfo.in_color_space = components == 4 ? JCS_EXT_RGBA : JCS_RGB;
+    cinfo.input_components = bytes == 4 ? 4 : 3;
+    switch (bytes)
+    {
+    case 2:
+        cinfo.in_color_space = JCS_RGB;
+        break;
+    case 4:
+        cinfo.in_color_space = JCS_EXT_RGBA;
+        break;
+    default:
+        return 0;
+    }
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, quality, true);
     jpeg_start_compress(&cinfo, true);
     //unsigned counter = 0;
     JSAMPROW row_pointer[1];
     row_pointer[0] = NULL;
+    uint8_t *offset;
+    uint16_t value;
     while (cinfo.next_scanline < cinfo.image_height)
     {
-        row_pointer[0] = (JSAMPROW)(&tmp[cinfo.next_scanline * w * components]);
+        if (bytes == 2)
+        {
+            tmp_row = (uint8_t *)malloc(w * cinfo.input_components);
+
+            for (size_t i = 0; i < (size_t)w; i++)
+            {
+                offset = tmp + cinfo.next_scanline * w * bytes + i * bytes;
+                value = offset[0] | (offset[1] << 8);
+                tmp_row[i * cinfo.input_components] = (value & 0x1F) * (255 / 31);
+                tmp_row[i * cinfo.input_components + 1] = ((value >> 5) & 0x3F) * (255 / 63);
+                tmp_row[i * cinfo.input_components + 2] = ((value >> 11) & 0x1F) * (255 / 31);
+            }
+            row_pointer[0] = (JSAMPROW)tmp_row;
+        }
+        else
+        {
+            row_pointer[0] = (JSAMPROW)(&tmp[cinfo.next_scanline * w * bytes]);
+        }
         jpeg_write_scanlines(&cinfo, row_pointer, 1);
+        if (tmp_row)
+        {
+            free(tmp_row);
+            tmp_row = NULL;
+        }
     }
     jpeg_finish_compress(&cinfo);
     jpeg_destroy_compress(&cinfo);
     //LOG("before %d after %d\n",  w*h*bbp, );
-    if (outbuffer_size < (unsigned long)(w * h * components))
+    if (outbuffer_size < (unsigned long)(w * h * bytes))
     {
         memcpy(buff, out, outbuffer_size);
     }
@@ -138,13 +144,12 @@ int jpeg_compress(uint8_t *buff, int w, int h, int components, int quality)
     free(out);
     return outbuffer_size;
 }
-#endif
+
 int get_pixel_format(uint8_t deep, wvnc_pixel_format_t *d)
 {
     switch (deep)
     {
     case 32:
-    case 24:
         d->r_shift = 0;
         d->g_shift = 8;
         d->b_shift = 16;
@@ -171,12 +176,13 @@ void *process(void *data, int wait)
     wvnc_user_data_t *user_data = get_user_data(data);
     uint8_t *buff = NULL;
     ws_msg_header_t *h = NULL;
-    while (!(h = ws_read_header(user_data->wscl->client)) && user_data->status != DISCONNECTED && wait);
+    while (!(h = ws_read_header(user_data->wscl->client)) && user_data->status != DISCONNECTED && wait)
+        ;
     if (h)
     {
         if (h->mask == 0)
         {
-            LOG("%s\n", "data is not masked");
+            ERROR("%s\n", "data is not masked");
             ws_close(user_data->wscl->client, 1012);
             user_data->status = DISCONNECTED;
             free(h);
@@ -269,8 +275,14 @@ static rfbBool resize(rfbClient *client)
     client->format.redMax = pxf.r_max;
     client->format.greenMax = pxf.g_max;
     client->format.blueMax = pxf.b_max;
-    SetFormatAndEncodings(client);
-    LOG("width %d, height %d, depth %d\n", width, height, client->format.bitsPerPixel);
+    if (SetFormatAndEncodings(client))
+    {
+        LOG("width %d, height %d, depth %d\n", width, height, client->format.bitsPerPixel);
+    }
+    else
+    {
+        ERROR("Unable to set VNC format and Encoding");
+    }
     /* create or resize the window */
     // send data to client
     uint8_t cmd[6];
@@ -296,9 +308,10 @@ static rfbBool resize(rfbClient *client)
 static void update(rfbClient *client, int x, int y, int w, int h)
 {
     wvnc_user_data_t *user_data = get_user_data(rfbClientGetClientData(client, client));
-    uint8_t components = (uint8_t)client->format.bitsPerPixel / 8;
-    int size = w * h * components;
-    uint8_t *cmd = (uint8_t *)malloc(size + 10); // + 9
+    uint8_t bytes = (uint8_t)client->format.bitsPerPixel / 8;
+    int component = bytes == 4 ? 4 : 3;
+    int size = w * h * bytes;
+    uint8_t *cmd = (uint8_t *)malloc(w * h * component + 10); // + 9
     uint8_t *tmp = cmd + 10;
     uint8_t flag = 0;
     if (!cmd)
@@ -308,7 +321,7 @@ static void update(rfbClient *client, int x, int y, int w, int h)
     }
     if (!client->frameBuffer)
     {
-        LOG("Client frame buffe data not found\n");
+        LOG("Client frame buffer data not found\n");
         return;
     }
     uint8_t *dest_ptr = tmp;
@@ -318,12 +331,12 @@ static void update(rfbClient *client, int x, int y, int w, int h)
     int cw = client->width;
     for (int j = y; j < y + h; j++)
     {
-        src_ptr = client->frameBuffer + (j * cw * components + x * components);
-        memcpy(dest_ptr, src_ptr, w * components);
-        if (components == 4)
-            for (int i = components - 1; i < w * components; i += components)
+        src_ptr = client->frameBuffer + (j * cw * bytes + x * bytes);
+        memcpy(dest_ptr, src_ptr, w * bytes);
+        if (bytes == 4)
+            for (int i = bytes - 1; i < w * bytes; i += bytes)
                 dest_ptr[i] = 255;
-        dest_ptr += w * components;
+        dest_ptr += w * bytes;
     }
     cmd[0] = 0x84; //update command
     cmd[1] = (uint8_t)(x & 0xFF);
@@ -335,10 +348,9 @@ static void update(rfbClient *client, int x, int y, int w, int h)
     cmd[7] = (uint8_t)(h & 0xFF);
     cmd[8] = (uint8_t)(h >> 8);
 
-#ifdef USE_JPEG
-    if ((components == 3 || components == 4) && (user_data->flag == 1 || user_data->flag == 3))
+    if (user_data->flag == 1)
     {
-        int ret = jpeg_compress(tmp, w, h, components, user_data->quality);
+        int ret = jpeg_compress(tmp, w, h, bytes, user_data->quality);
         if (ret > 0)
         {
             flag |= 0x01;
@@ -346,14 +358,6 @@ static void update(rfbClient *client, int x, int y, int w, int h)
         }
     }
 
-#endif
-#ifdef USE_ZLIB
-    if (user_data->flag >= 2)
-    {
-        flag |= 0x02;
-        size = zlib_compress(tmp, size);
-    }
-#endif
     cmd[9] = flag;
     ws_b(user_data->wscl->client, cmd, size + 10);
     free(cmd);
@@ -429,6 +433,7 @@ void open_session(void *data, const char *addr)
     FILE *fp = NULL;
     char *buffer = NULL;
     char c;
+    int st;
     wvnc_user_data_t *user_data = get_user_data(data);
     if (access(addr, F_OK) != -1)
     {
@@ -453,12 +458,13 @@ void open_session(void *data, const char *addr)
         }
 
         // allocate memory for size of first line (len)
-        buffer = (char *)malloc(sizeof(char) * (len+1));
+        buffer = (char *)malloc(sizeof(char) * (len + 1));
 
         // seek to beginning of file
         fseek(fp, 0, SEEK_SET);
         buffer[len] = '\0';
-        UNUSED(fread(buffer, sizeof(char), len, fp));
+        st = fread(buffer, sizeof(char), len, fp);
+        UNUSED(st);
         fclose(fp);
         argv[1] = buffer;
     }
@@ -476,31 +482,33 @@ void open_session(void *data, const char *addr)
         user_data->vncl = NULL; /* rfbInitClient has already freed the client struct */
         //cleanup(vncl);
         vnc_fatal(user_data, "Cannot connect to the server");
-        if(buffer) free(buffer);
+        if (buffer)
+            free(buffer);
         return;
     }
-    if(buffer) free(buffer);
+    if (buffer)
+        free(buffer);
     user_data->status = CONNECTED;
 }
 
-void waitfor(void* data)
+void waitfor(void *data)
 {
     fd_set fd_in;
     wvnc_user_data_t *user_data = get_user_data(data);
-    struct timeval timeout;      
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 500;
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 500;
     while (user_data->status != DISCONNECTED)
     {
         FD_ZERO(&fd_in);
-	    FD_SET(user_data->wscl->client->sock, &fd_in);
-	    int rc = select(user_data->wscl->client->sock + 1, &fd_in, NULL, NULL, &timeout);
-        if(rc == -1)
+        FD_SET(user_data->wscl->client->sock, &fd_in);
+        int rc = select(user_data->wscl->client->sock + 1, &fd_in, NULL, NULL, &timeout);
+        if (rc == -1)
         {
             LOG("Client may disconnected \n");
             return;
         }
-        if(rc > 0 && FD_ISSET(user_data->wscl->client->sock, &fd_in))
+        if (rc > 0 && FD_ISSET(user_data->wscl->client->sock, &fd_in))
         {
             process(user_data, 0);
         }
@@ -532,7 +540,7 @@ void *vnc_fatal(void *data, const char *msg)
     int len, size;
     len = strlen(msg);
     size = len + 1;
-    LOG("%s\n", msg);
+    LOG("%s", msg);
     uint8_t *cmd = (uint8_t *)malloc(size);
     cmd[0] = 0xFE; // error opcode
     if (cmd)
@@ -586,7 +594,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2] ? TRUE : FALSE);
         break;
     case 0x07:
-        SendClientCutText(user_data->vncl, (char*)header.data, strlen((char*)header.data));
+        SendClientCutText(user_data->vncl, (char *)header.data, strlen((char *)header.data));
         break;
     default:
         return vnc_fatal(user_data, "Unknown client command");
@@ -615,7 +623,7 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     free(ack);
 }
 
-void event_loop(void* data)
+void event_loop(void *data)
 {
     wvnc_user_data_t *user_data = get_user_data(data);
     rfbClient *vncl = NULL;
@@ -633,10 +641,10 @@ void event_loop(void* data)
     user_data->status = READY; // 1 for ready for connect
     user_data->vncl = vncl;
     rfbClientSetClientData(vncl, vncl, user_data);
-    waitfor((void*) user_data);
+    waitfor((void *)user_data);
     // child
-    if( user_data->vncl && user_data->vncl->frameBuffer)
-    { 
+    if (user_data->vncl && user_data->vncl->frameBuffer)
+    {
         free(user_data->vncl->frameBuffer);
         user_data->vncl->frameBuffer = NULL;
     }
@@ -646,17 +654,17 @@ void event_loop(void* data)
     destroy_request(user_data->wscl);
     free(user_data);
 }
-void* handle(void *data)
+void *handle(void *data)
 {
     antd_request_t *rq = (antd_request_t *)data;
     pthread_t th;
     antd_task_t *task = NULL;
-	void *cl = (void *)rq->client;
+    void *cl = (void *)rq->client;
     if (ws_enable(rq->request))
     {
         wvnc_user_data_t *user_data = (wvnc_user_data_t *)malloc(sizeof(wvnc_user_data_t));
         user_data->wscl = rq;
-        if (pthread_create(&th, NULL,(void* (*)(void *))event_loop, (void*)user_data) != 0)
+        if (pthread_create(&th, NULL, (void *(*)(void *))event_loop, (void *)user_data) != 0)
         {
             free(user_data);
             perror("pthread_create: cannot create thread for wvnc\n");
@@ -671,7 +679,7 @@ void* handle(void *data)
     }
     else
     {
-        antd_error(cl,400,"Please use a websocket connection");
+        antd_error(cl, 400, "Please use a websocket connection");
     }
     task = antd_create_task(NULL, (void *)rq, NULL, rq->client->last_io);
     task->priority++;
@@ -680,9 +688,7 @@ void* handle(void *data)
 }
 void init()
 {
-    
 }
 void destroy()
 {
-
 }
