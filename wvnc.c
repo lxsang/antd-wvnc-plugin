@@ -673,7 +673,6 @@ void *handle(void *data)
         {
             pthread_detach(th);
             task = antd_create_task(NULL, NULL, NULL, time(NULL));
-            task->priority++;
             return task;
         }
     }
@@ -682,7 +681,6 @@ void *handle(void *data)
         antd_error(cl, 400, "Please use a websocket connection");
     }
     task = antd_create_task(NULL, (void *)rq, NULL, rq->client->last_io);
-    task->priority++;
     return task;
     //LOG("%s\n", "EXIT Streaming..");
 }
