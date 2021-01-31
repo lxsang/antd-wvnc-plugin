@@ -4,7 +4,7 @@ Overview about wvnc: [https://blog.lxsang.me/post/id/23](https://blog.lxsang.me/
 
 An [Antd HTTP/HTTPS server's](https://github.com/lxsang/ant-http) plugin that acts as a bridge between a VNC server and web applications. It allows web application to communicate with VNC server using web socket via a predefined protocol and message format. Web application can use my dedicate javascript library called [**wvnc.js**](https://github.com/lxsang/wvnc.js) to communicate with the VNC server using the plugin.
 
-To speed up the data transmission, **WVNC** uses **libjpeg** and **zlib** for data compression.
+To speed up the data transmission, **WVNC** uses **libjpeg** for image compression.
 
 ## Build from source
 As **WVNC** is an **Antd's** plugin, the server need to be pre-installed:
@@ -13,6 +13,7 @@ As **WVNC** is an **Antd's** plugin, the server need to be pre-installed:
 * git
 * make
 * build-essential
+* ant-http (libantd.so)
 
 
 ### Plugin Dependencies
