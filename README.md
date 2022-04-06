@@ -25,7 +25,7 @@ When all dependencies are installed, the build can be done with a few single com
 
 ```bash
 # replace x.x.x by a version number
-wget -O- https://get.bitdojo.dev/antd_plugin | bash -s "wvnc-x.x.x"
+wget -O- https://get.iohub.dev/antd_plugin | bash -s "wvnc-x.x.x"
 
 # or from the distribution tarball
 tar xvzf wvnc-x.x.x.tar.gz
