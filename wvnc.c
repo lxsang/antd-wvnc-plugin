@@ -298,7 +298,7 @@ static void finish_update(rfbClient *client)
     int size = cw * ch * 4;
     uint8_t *cmd = (uint8_t *)malloc(size + 9); // + 9
     uint8_t *tmp = cmd + 9;
-    LOG("w %d h %d x %d y %d", cw, ch, x, y);
+    //LOG("w %d h %d x %d y %d", cw, ch, x, y);
     
     if (!cmd)
     {
@@ -565,11 +565,13 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         break;
     case 0x05: //mouse event
         //LOG("MOuse event %d\n", header.data[4]);
-        SendPointerEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2] | (header.data[3] << 8), header.data[4]);
+        SendPointerEvent(user_data->vncl,
+            (header.data[0] | (header.data[1] << 8)) & 0xFFFF,
+            (header.data[2] | (header.data[3] << 8)) & 0xFFFF, header.data[4]);
         break;
     case 0x06: // key board event
-        //LOG("Key is %c\n", header.data[0]);
-        SendKeyEvent(user_data->vncl, header.data[0] | (header.data[1] << 8), header.data[2] ? TRUE : FALSE);
+        // LOG("Key is %c %d", (header.data[0] | (header.data[1] << 8)) & 0xFFFF, header.data[2]);
+        SendKeyEvent(user_data->vncl, (header.data[0] | (header.data[1] << 8)) & 0xFFFF, header.data[2] ? TRUE : FALSE);
         break;
     case 0x07:
         SendClientCutText(user_data->vncl, (char *)header.data, strlen((char *)header.data));
@@ -664,7 +666,7 @@ void *handle(void *data)
     {
         antd_error(cl, 400, "Please use a websocket connection");
     }
-    task = antd_create_task(NULL, (void *)rq, NULL, rq->client->last_io);
+    task = antd_create_task(NULL, (void *)rq, NULL, time(NULL));
     return task;
     //LOG("%s\n", "EXIT Streaming..");
 }
