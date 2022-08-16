@@ -147,7 +147,7 @@ void *process(void *data, int wait)
     {
         if (h->mask == 0)
         {
-            ERROR("%s\n", "data is not masked");
+            ERROR("Data is not masked opcode 0x%04x data len %d", h->opcode,h->plen);
             ws_close(user_data->wscl->client, 1012);
             user_data->status = DISCONNECTED;
             free(h);
@@ -156,7 +156,7 @@ void *process(void *data, int wait)
         }
         if (h->opcode == WS_CLOSE)
         {
-            LOG("%s\n", "Websocket: connection closed");
+            LOG("Websocket: connection closed");
             ws_close(user_data->wscl->client, 1011);
             user_data->status = DISCONNECTED;
             free(h);
@@ -486,7 +486,7 @@ void waitfor(void *data)
         int rc = select(user_data->wscl->client->sock + 1, &fd_in, NULL, NULL, &timeout);
         if (rc == -1)
         {
-            LOG("Client may disconnected \n");
+            LOG("Client may disconnected");
             return;
         }
         if (rc > 0 && FD_ISSET(user_data->wscl->client->sock, &fd_in))
@@ -499,12 +499,15 @@ void waitfor(void *data)
             int status = WaitForMessage(user_data->vncl, 200); //500
             if (status < 0)
             {
+                ERROR("VNC WaitForMessage return %d", status);
                 break;
             }
             if (status)
             {
-                if (!HandleRFBServerMessage(user_data->vncl))
+                status = HandleRFBServerMessage(user_data->vncl);
+                if (!status)
                 {
+                    ERROR("VNC HandleRFBServerMessage fail");
                     break;
                 }
             }
@@ -521,7 +524,7 @@ void *vnc_fatal(void *data, const char *msg)
     int len, size;
     len = strlen(msg);
     size = len + 1;
-    LOG("%s", msg);
+    ERROR("VNC FATAL: %s", msg);
     uint8_t *cmd = (uint8_t *)malloc(size);
     cmd[0] = 0xFE; // error opcode
     if (cmd)
@@ -576,6 +579,9 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
     case 0x07:
         SendClientCutText(user_data->vncl, (char *)header.data, strlen((char *)header.data));
         break;
+    case 0x08:
+        LOG("Receive ping message from client: %s", (char*)header.data);
+        break;
     default:
         return vnc_fatal(user_data, "Unknown client command");
     }
@@ -584,7 +590,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
 
 static void got_clipboard(rfbClient *cl, const char *text, int len)
 {
-    LOG("received clipboard text '%s'\n", text);
+    LOG("received clipboard text '%s'", text);
     void *data = rfbClientGetClientData(cl, cl);
     wvnc_user_data_t *user_data = get_user_data(data);
     uint8_t *cmd = (uint8_t *)malloc(len + 1);
@@ -595,7 +601,7 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     uint8_t *ack = (uint8_t *)process(user_data, 1);
     if (!ack || !(*ack))
     {
-        LOG("Fail to set client clipboard\n");
+        LOG("Fail to set client clipboard");
         if (ack)
             free(ack);
         return;
@@ -666,7 +672,7 @@ void *handle(void *data)
     {
         antd_error(cl, 400, "Please use a websocket connection");
     }
-    task = antd_create_task(NULL, (void *)rq, NULL, time(NULL));
+    task = antd_create_task(NULL, (void *)rq, NULL, rq->client->last_io);
     return task;
     //LOG("%s\n", "EXIT Streaming..");
 }
