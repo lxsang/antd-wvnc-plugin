@@ -19,11 +19,6 @@ def build_plugin()
 pipeline{
   agent { node{ label'master' }}
   options {
-    // Limit build history with buildDiscarder option:
-    // daysToKeepStr: history is only kept up to this many days.
-    // numToKeepStr: only this many build logs are kept.
-    // artifactDaysToKeepStr: artifacts are only kept up to this many days.
-    // artifactNumToKeepStr: only this many builds have their artifacts kept.
     buildDiscarder(logRotator(numToKeepStr: "1"))
     // Enable timestamps in build log console
     timestamps()
@@ -41,9 +36,6 @@ pipeline{
           docker {
               image 'xsangle/ci-tools:latest-amd64'
               args '-v /var/jenkins_home/workspace/ant-http:/var/jenkins_home/workspace/ant-http'
-              // Run the container on the node specified at the
-              // top-level of the Pipeline, in the same workspace,
-              // rather than on a new node entirely:
               reuseNode true
           }
       }
@@ -59,9 +51,6 @@ pipeline{
           docker {
               image 'xsangle/ci-tools:latest-arm64'
               args '-v /var/jenkins_home/workspace/ant-http:/var/jenkins_home/workspace/ant-http'
-              // Run the container on the node specified at the
-              // top-level of the Pipeline, in the same workspace,
-              // rather than on a new node entirely:
               reuseNode true
           }
       }
@@ -77,9 +66,6 @@ pipeline{
           docker {
               image 'xsangle/ci-tools:latest-arm'
               args '-v /var/jenkins_home/workspace/ant-http:/var/jenkins_home/workspace/ant-http'
-              // Run the container on the node specified at the
-              // top-level of the Pipeline, in the same workspace,
-              // rather than on a new node entirely:
               reuseNode true
           }
       }
@@ -99,4 +85,3 @@ pipeline{
     }
   }
 }
-Footer
