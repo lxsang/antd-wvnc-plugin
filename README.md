@@ -16,7 +16,6 @@ As **WVNC** is an **Antd's** plugin, the server need to be pre-installed:
 
 
 ### Plugin Dependencies
-* Zlib
 * libjpeg-turbo
 * libvncserver-dev
 
