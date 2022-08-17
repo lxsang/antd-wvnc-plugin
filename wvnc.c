@@ -91,7 +91,7 @@ int jpeg_compress(uint8_t *buff, int w, int h, int bytes, int quality)
     switch (bytes)
     {
     case 2:
-        cinfo.in_color_space = JCS_RGB;
+        cinfo.in_color_space = JCS_EXT_RGB;
         break;
     case 4:
         cinfo.in_color_space = JCS_EXT_RGBA;
