@@ -72,12 +72,10 @@ static long long current_timestamp() {
 
 int jpeg_compress(uint8_t *buff, int w, int h, int quality)
 {
-    uint8_t *tmp_row = NULL;
     struct jpeg_compress_struct cinfo = {0};
     struct jpeg_error_mgr jerror = {0};
     jerror.trace_level = 10;
     cinfo.err = jpeg_std_error(&jerror);
-    jerror.trace_level = 10;
     cinfo.err->trace_level = 10;
     jpeg_create_compress(&cinfo);
     uint8_t *out = NULL;
@@ -90,6 +88,11 @@ int jpeg_compress(uint8_t *buff, int w, int h, int quality)
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, quality, true);
     jpeg_start_compress(&cinfo, true);
+    if(!out)
+    {
+        ERROR("Unable to allocate output jpeg memory");
+        return 0;
+    }
     //unsigned counter = 0;
     JSAMPROW row_pointer[1];
     row_pointer[0] = NULL;
@@ -97,15 +100,17 @@ int jpeg_compress(uint8_t *buff, int w, int h, int quality)
     {
         row_pointer[0] = (JSAMPROW)(&buff[cinfo.next_scanline * w * 4]);
         jpeg_write_scanlines(&cinfo, row_pointer, 1);
-        if (tmp_row)
-        {
-            free(tmp_row);
-            tmp_row = NULL;
-        }
     }
     jpeg_finish_compress(&cinfo);
     jpeg_destroy_compress(&cinfo);
-    memcpy(buff, out, outbuffer_size);
+    if (outbuffer_size < (unsigned long)(w * h * 4))
+    {
+        memcpy(buff, out, outbuffer_size);
+    }
+    else
+    {
+        outbuffer_size = 0;
+    }
     free(out);
     return outbuffer_size;
 }
@@ -296,18 +301,23 @@ static void finish_update(rfbClient *client)
     int x = user_data->ux;
     int y = user_data->uy;
     int size = cw * ch * 4;
-    uint8_t *cmd = (uint8_t *)malloc(size + 9); // + 9
-    uint8_t *tmp = cmd + 9;
+    uint8_t flag = 0;
+    uint8_t *cmd = (uint8_t *)malloc(size + 10); // + 9
+    uint8_t *tmp = cmd + 10;
     //LOG("w %d h %d x %d y %d", cw, ch, x, y);
     
-    if (!cmd)
+    if (!cmd || !tmp)
     {
         vnc_fatal(user_data, "Cannot allocate data for update");
         return;
     }
     if (!client->frameBuffer)
     {
-        LOG("Client frame buffer data not found\n");
+        LOG("Client frame buffer data not found");
+        return;
+    }
+    if(size == 0)
+    {
         return;
     }
     uint8_t *dest_ptr = tmp;
@@ -335,9 +345,11 @@ static void finish_update(rfbClient *client)
     int ret = jpeg_compress(tmp, cw, ch, user_data->quality);
     if (ret > 0)
     {
+        flag |= 0x01;
         size = ret;
-        ws_b(user_data->wscl->client, cmd, size + 9);
     }
+    cmd[9] = flag;
+    ws_b(user_data->wscl->client, cmd, size + 10);
     user_data->ux = 0xFFFF;
     user_data->uy = 0xFFFF;
     user_data->uw = 0;
