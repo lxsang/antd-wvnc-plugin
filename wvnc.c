@@ -197,7 +197,7 @@ void *process(void *data, int wait)
         if (h->opcode == WS_CLOSE)
         {
             LOG("Websocket: connection closed");
-            ws_close(user_data->wscl->client, 1011);
+            //ws_close(user_data->wscl->client, 1011);
             user_data->status = DISCONNECTED;
             free(h);
             return 0;
