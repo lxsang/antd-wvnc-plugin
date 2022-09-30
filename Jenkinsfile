@@ -34,7 +34,7 @@ pipeline{
     stage('Build AMD64') {
       agent {
           docker {
-              image 'xsangle/ci-tools:latest-amd64'
+              image 'xsangle/ci-tools:bionic-amd64'
               args '-v /var/jenkins_home/workspace/ant-http:/var/jenkins_home/workspace/ant-http'
               reuseNode true
           }
@@ -49,7 +49,7 @@ pipeline{
     stage('Build ARM64') {
       agent {
           docker {
-              image 'xsangle/ci-tools:latest-arm64'
+              image 'xsangle/ci-tools:bionic-arm64'
               args '-v /var/jenkins_home/workspace/ant-http:/var/jenkins_home/workspace/ant-http'
               reuseNode true
           }
@@ -64,7 +64,7 @@ pipeline{
     stage('Build ARM') {
       agent {
           docker {
-              image 'xsangle/ci-tools:latest-arm'
+              image 'xsangle/ci-tools:bionic-arm'
               args '-v /var/jenkins_home/workspace/ant-http:/var/jenkins_home/workspace/ant-http'
               reuseNode true
           }
