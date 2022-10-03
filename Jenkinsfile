@@ -4,7 +4,7 @@ def build_plugin()
   set -e
   cd $WORKSPACE
   mkdir -p build/$arch/opt/www
-  [ -f Makefile ] && make clean
+  [ -f Makefile ] && (make clean || true)
   libtoolize
   aclocal
   autoconf
