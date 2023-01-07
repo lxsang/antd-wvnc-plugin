@@ -332,6 +332,10 @@ static void finish_update(rfbClient *client)
         // LOG("User is not ready");
         return;
     }
+    if(user_data->uh == 0 || user_data->uw == 0)
+    {
+        return;
+    }
     uint8_t bytes = (uint8_t)client->format.bitsPerPixel / 8;
     user_data->last_update = current_time;
     int cw = user_data->uw;
@@ -618,6 +622,7 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
         data = (uint8_t *)malloc(1);
         *data = (uint8_t)header.data[0];
         user_data->ready = 1;
+        finish_update(user_data->vncl);
         return data;
         break;
     case 0x05: //mouse event
