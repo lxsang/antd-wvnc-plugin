@@ -42,6 +42,7 @@ typedef struct
     uint16_t uy;
     uint16_t uw;
     uint16_t uh;
+    uint8_t ready;
     //int rate;
 } wvnc_user_data_t;
 
@@ -326,8 +327,9 @@ static void finish_update(rfbClient *client)
 {
     wvnc_user_data_t *user_data = get_user_data(rfbClientGetClientData(client, client));
     long long current_time = current_timestamp();
-    if(current_time - user_data->last_update < 40)
+    if(!user_data->ready)
     {
+        // LOG("User is not ready");
         return;
     }
     uint8_t bytes = (uint8_t)client->format.bitsPerPixel / 8;
@@ -391,6 +393,7 @@ static void finish_update(rfbClient *client)
     user_data->uy = 0xFFFF;
     user_data->uw = 0;
     user_data->uh = 0;
+    user_data->ready = 0;
     free(cmd);
 }
 
@@ -424,7 +427,7 @@ static rfbCredential *get_credential(rfbClient *cl, int credentialType)
     while (*pass != '\0')
         pass++;
     pass++;
-    LOG("User name %s, pass: %s\n", up, pass);
+    //LOG("User name %s, pass: %s\n", up, pass);
     memcpy(c->userCredential.username, up, strlen(up) + 1);
     memcpy(c->userCredential.password, pass, strlen(pass) + 1);
     free(up);
@@ -614,10 +617,15 @@ void *consume_client(void *ptr, wvnc_cmd_t header)
     case 0x04: // ack from client
         data = (uint8_t *)malloc(1);
         *data = (uint8_t)header.data[0];
+        user_data->ready = 1;
         return data;
         break;
     case 0x05: //mouse event
-        //LOG("MOuse event %d\n", header.data[4]);
+        LOG(
+            "MOuse event received at (%d,%d) Buton mask %d\n",
+            (header.data[0] | (header.data[1] << 8)) & 0xFFFF,
+            (header.data[2] | (header.data[3] << 8)) & 0xFFFF,
+            header.data[4]);
         SendPointerEvent(user_data->vncl,
             (header.data[0] | (header.data[1] << 8)) & 0xFFFF,
             (header.data[2] | (header.data[3] << 8)) & 0xFFFF, header.data[4]);
@@ -651,7 +659,7 @@ static void got_clipboard(rfbClient *cl, const char *text, int len)
     uint8_t *ack = (uint8_t *)process(user_data, 1);
     if (!ack || !(*ack))
     {
-        LOG("Fail to set client clipboard");
+        ERROR("Fail to set client clipboard");
         if (ack)
             free(ack);
         return;
