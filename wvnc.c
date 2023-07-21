@@ -10,6 +10,8 @@
 #include <antd/ws.h>
 #include <sys/time.h>
 
+#define PING_INTERVAL 10u               // 10s
+
 #define get_user_data(x) ((wvnc_user_data_t *)x)
 /*
 Vnc to web socket using the
@@ -240,6 +242,16 @@ void *process(void *data, int wait)
                 //break;
             }
             //buff = NULL;
+        }
+        else if (h->opcode == WS_PONG)
+        {
+            buff = (uint8_t *)malloc(h->plen + 1);
+            if (buff)
+            {
+                ws_read_data(user_data->wscl->client, h, h->plen, buff);
+                LOG("Receive pong message from client: %s. Client Alive", buff);
+                free(buff);
+            }
         }
         else
         {
@@ -537,6 +549,15 @@ void waitfor(void *data)
     timeout.tv_usec = 500;
     while (user_data->status != DISCONNECTED)
     {
+        // check whether we need to send ping message to client
+        if (difftime(time(NULL), user_data->wscl->client->last_io) > (double)PING_INTERVAL)
+        {
+            if (ws_ping(user_data->wscl->client, "WVNC", 0) != 0)
+            {
+                ERROR("Unable to ping client, close the connection: %d", user_data->wscl->client->sock);
+                return;
+            }
+        }
         FD_ZERO(&fd_in);
         FD_SET(user_data->wscl->client->sock, &fd_in);
         int rc = select(user_data->wscl->client->sock + 1, &fd_in, NULL, NULL, &timeout);
