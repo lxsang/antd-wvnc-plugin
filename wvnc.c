@@ -709,6 +709,8 @@ void event_loop(void *data)
     vncl->GetCredential = get_credential;
     vncl->listenPort = LISTEN_PORT_OFFSET;
     vncl->listen6Port = LISTEN_PORT_OFFSET;
+    vncl->appData.useRemoteCursor = true;
+    //vncl->GotCursorShape = cursor_changed;
     user_data->status = READY; // 1 for ready for connect
     user_data->vncl = vncl;
     rfbClientSetClientData(vncl, vncl, user_data);
