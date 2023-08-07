@@ -710,6 +710,14 @@ void event_loop(void *data)
     vncl->listenPort = LISTEN_PORT_OFFSET;
     vncl->listen6Port = LISTEN_PORT_OFFSET;
     vncl->appData.useRemoteCursor = true;
+    // use server JPEG encoding
+    vncl->appData.enableJPEG = true;
+    vncl->appData.qualityLevel = user_data->quality / 10;
+    if(vncl->appData.qualityLevel > 9)
+    {
+        vncl->appData.qualityLevel = 9;
+    }
+    //user_data->quality
     //vncl->GotCursorShape = cursor_changed;
     user_data->status = READY; // 1 for ready for connect
     user_data->vncl = vncl;
