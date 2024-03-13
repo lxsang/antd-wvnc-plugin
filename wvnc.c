@@ -1,4 +1,3 @@
-#define PLUGIN_IMPLEMENT 1
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -6,6 +5,7 @@
 #include <pthread.h>
 #include <jpeglib.h>
 #include <antd/plugin.h>
+#include <antd/handle.h>
 #include <antd/scheduler.h>
 #include <antd/ws.h>
 #include <sys/time.h>
@@ -770,9 +770,14 @@ void *handle(void *data)
     return task;
     //LOG("%s\n", "EXIT Streaming..");
 }
-void init()
+void* create(antd_plugin_ctx_t* ctx)
 {
+    UNUSED(ctx);
+    LOG("Initialize WVNC context");
+    return NULL;
 }
-void destroy()
+void drop(antd_plugin_ctx_t* ctx)
 {
+    UNUSED(ctx);
+    LOG("Drop WVNC context");
 }

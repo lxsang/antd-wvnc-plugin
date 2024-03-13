@@ -1,5 +1,5 @@
 # initialise autoconf and set up some basic information about the program we’re packaging
-AC_INIT([wvnc], [0.2.5a], [xsang.le@gmail.com])
+AC_INIT([wvnc], [0.3.0], [xsang.le@gmail.com])
 
 # We’re going to use automake for this project
 # [subdir-objects] if needed
